@@ -35,8 +35,19 @@ async function downloadMedia(mediaId) {
     try {
         const { data: m } = await axios.get(`https://graph.facebook.com/v22.0/${mediaId}`, { headers: { Authorization: `Bearer ${WA_TOKEN}` } })
         const { data } = await axios.get(m.url, { headers: { Authorization: `Bearer ${WA_TOKEN}` }, responseType: 'arraybuffer' })
-        return Buffer.from(data)
+        return { buffer: Buffer.from(data), mimeType: m.mime_type || 'image/jpeg' }
     } catch(e) { return null }
+}
+
+async function uploadToStorage(buffer, mimeType, deliveryId) {
+    try {
+        const ext = mimeType.includes('png') ? 'png' : mimeType.includes('mp4') ? 'mp4' : 'jpg'
+        const filename = `${deliveryId}/${Date.now()}.${ext}`
+        const { error } = await supabase.storage.from('delivery-images').upload(filename, buffer, { contentType: mimeType })
+        if (error) { console.error('Upload error:', error); return null }
+        const { data } = supabase.storage.from('delivery-images').getPublicUrl(filename)
+        return data.publicUrl
+    } catch(e) { console.error('Storage error:', e); return null }
 }
 
 async function getDelivery(phone) {
@@ -49,13 +60,21 @@ async function updateDelivery(id, updates) {
     await supabase.from('deliveries').update(updates).eq('id', id)
 }
 
-async function saveProof(deliveryId, proofType) {
-    await supabase.from('delivery_proofs').insert({ delivery_id: deliveryId, proof_url: proofType, proof_type: proofType })
+async function saveProof(deliveryId, proofUrl, proofType) {
+    await supabase.from('delivery_proofs').insert({ delivery_id: deliveryId, proof_url: proofUrl, proof_type: proofType })
 }
 
-async function logMsg(deliveryId, sender, message) {
-    if (!deliveryId || !message) return
-    try { await supabase.from('delivery_messages').insert({ delivery_id: deliveryId, sender, message }) } catch(e) {}
+async function logMsg(deliveryId, sender, message, mediaUrl, mediaType) {
+    if (!deliveryId) return
+    try {
+        await supabase.from('delivery_messages').insert({
+            delivery_id: deliveryId,
+            sender,
+            message: message || '',
+            media_url: mediaUrl || null,
+            media_type: mediaType || null
+        })
+    } catch(e) { console.error('Log error:', e.message) }
 }
 
 async function botMsg(to, text, deliveryId) {
@@ -117,10 +136,11 @@ async function handleBriefed(d, from, msg) {
     await updateDelivery(d.id, { status: 'links_sent' })
 }
 
-async function handleLinksSent(d, from, msg, imgBuf) {
-    if (imgBuf) {
-        const result = await analyzeImage(imgBuf, 'Does this show tickets in Apple or Google Wallet? JSON only: {"confirmed":true,"notes":"brief"}')
-        await saveProof(d.id, 'wallet_screenshot')
+async function handleLinksSent(d, from, msg, imgData) {
+    if (imgData) {
+        const { buffer, mimeType, publicUrl } = imgData
+        const result = await analyzeImage(buffer, 'Does this show tickets in Apple or Google Wallet? JSON only: {"confirmed":true,"notes":"brief"}')
+        await saveProof(d.id, publicUrl, 'wallet_screenshot')
         if (result?.confirmed) {
             await updateDelivery(d.id, { status: 'wallet_confirmed' })
             await botMsg(from, `✅ *Confirmed!* Tickets in your wallet.\n\nEnjoy *${d.game_name}*! 🏟️⚽\n\nI'll remind you to remove after full time.`, d.id)
@@ -140,10 +160,11 @@ async function handleLinksSent(d, from, msg, imgBuf) {
     }
 }
 
-async function handleWalletConfirmed(d, from, msg, imgBuf) {
-    if (imgBuf) {
-        const result = await analyzeImage(imgBuf, 'Has ticket been removed from wallet? JSON only: {"removed":true,"notes":"brief"}')
-        await saveProof(d.id, 'removal_proof')
+async function handleWalletConfirmed(d, from, msg, imgData) {
+    if (imgData) {
+        const { buffer, publicUrl } = imgData
+        const result = await analyzeImage(buffer, 'Has ticket been removed from wallet? JSON only: {"removed":true,"notes":"brief"}')
+        await saveProof(d.id, publicUrl, 'removal_proof')
         if (result?.removed) {
             await updateDelivery(d.id, { status: 'removed' })
             await botMsg(from, `✅ Tickets removed. Thanks, hope you enjoyed the game! 🙌`, d.id)
@@ -167,12 +188,12 @@ async function handleTraderCommand(msg) {
     if (m.toUpperCase().startsWith('RESEND ')) {
         const parts = m.split(' '), phone = '+' + parts[1].replace(/[^0-9]/g, ''), links = parts.slice(2).join('\n')
         const d = await getDelivery(phone)
-        if (d) { await updateDelivery(d.id, { links, status: 'links_sent' }); await botMsg(phone, `Sorry! 🙏 Correct links:\n\n${links}\n\nAdd to wallet and send screenshot ✅`, d.id); await notifyTrader(`✅ Correct links sent to ${d.client_name}`) }
+        if (d) { await updateDelivery(d.id, { links, status: 'links_sent' }); await botMsg(phone, `Sorry! 🙏 Correct links:\n\n${links}\n\nAdd to wallet and send screenshot ✅`, d.id) }
         return
     }
     if (m.toUpperCase().startsWith('GAMEOVER ')) {
         const phone = '+' + m.split(' ')[1].replace(/[^0-9]/g, ''), d = await getDelivery(phone)
-        if (d) { await botMsg(phone, `👋 Game over — remove tickets now and send screenshot 📸`, d.id); await notifyTrader(`✅ Removal chase sent`) }
+        if (d) { await botMsg(phone, `👋 Game over — remove tickets now and send screenshot 📸`, d.id) }
         return
     }
     if (m.toUpperCase().startsWith('REPLY ')) {
@@ -180,7 +201,6 @@ async function handleTraderCommand(msg) {
         const d = await getDelivery(phone)
         await sendMsg(phone, message)
         await logMsg(d?.id, 'trader', message)
-        await notifyTrader(`✅ Sent`)
         return
     }
 }
@@ -198,17 +218,32 @@ app.post('/webhook', async (req, res) => {
         const msg = messages[0], from = msg.from, type = msg.type
         const text = type === 'text' ? msg.text?.body : `[${type}]`
         console.log(`From ${from}: ${text}`)
+
         if (from === TRADER_NUMBER) { if (type === 'text') await handleTraderCommand(text); return }
+
         const delivery = await getDelivery(from)
         if (!delivery) { await sendMsg(from, `Hi! This is Fanatick ticket delivery 🎫`); return }
-        await logMsg(delivery.id, 'client', text)
-        let imgBuf = null
-        if (type === 'image' && msg.image?.id) imgBuf = await downloadMedia(msg.image.id)
+
+        // Handle media — download, upload to storage, log with URL
+        let imgData = null
+        if ((type === 'image' || type === 'video') && (msg.image?.id || msg.video?.id)) {
+            const mediaId = msg.image?.id || msg.video?.id
+            const downloaded = await downloadMedia(mediaId)
+            if (downloaded) {
+                const publicUrl = await uploadToStorage(downloaded.buffer, downloaded.mimeType, delivery.id)
+                imgData = { buffer: downloaded.buffer, mimeType: downloaded.mimeType, publicUrl }
+                await logMsg(delivery.id, 'client', `[${type}]`, publicUrl, type)
+            }
+        } else {
+            await logMsg(delivery.id, 'client', text)
+        }
+
         const s = delivery.status
         if (s === 'phone_detected')        await handlePhoneDetect(delivery, from, text)
         else if (s === 'briefed')          await handleBriefed(delivery, from, text)
-        else if (s === 'links_sent')       await handleLinksSent(delivery, from, text, imgBuf)
-        else if (s === 'wallet_confirmed') await handleWalletConfirmed(delivery, from, text, imgBuf)
+        else if (s === 'links_sent')       await handleLinksSent(delivery, from, text, imgData)
+        else if (s === 'wallet_confirmed') await handleWalletConfirmed(delivery, from, text, imgData)
+
     } catch(e) { console.error('Webhook error:', e) }
 })
 
