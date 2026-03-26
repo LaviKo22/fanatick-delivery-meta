@@ -1,4 +1,5 @@
 const express = require('express')
+const cors = require('cors')
 const axios = require('axios')
 const { createClient } = require('@supabase/supabase-js')
 const OpenAI = require('openai')
@@ -7,7 +8,7 @@ const OpenAI = require('openai')
 //  CONFIG
 // ============================================================
 
-const WA_TOKEN        = process.env.WA_TOKEN        || 'EAALQkef2WmkBROt4GcZAZAYdgSJQ4rc6GOglBIVNNnLfBLFVKSx2oZCmauC44Ikdz6pzjh208f6qSHGhUqVnQqMYeb2RZA9ukl0On9aZA3ogVr3jlMOoRvoOYNWEgGeIiYhzktuMaOIjLVhfMTewkz9ecbsilzmLbX3yKL4lySQ6AZB0tLEJlr1j3YUIiQgd1SCwuOaNj1xsWwPirpMrz0atqUGgeBovE8CjkTkFZC99QoMXl9NQjPwdAsU0G0Um2QnwfrZBRpti2FnuPmCeE1c50KB2'
+const WA_TOKEN        = process.env.WA_TOKEN        || 'EAALQkef2WmkBRH2n2X1ZCf1Pw5uAH4zyjQ1oVZB57EelxQGDaNrnllspP0v0QuYI90gzjIW5mcZArqc9WXvzVOayEN4Bjn8ZASZAGFiHaqSnSEHf8omo0fZBUnt7YihipsHlpOS4sjXHTd5PyGE2zqxUo8usPEz5wwWEvsQmVKxcqAN3d0ITH33tQknhh3v3N3kBRZBD0E0TejW5ZAO1xLxWGAzJ24JH73K43oO5yw8MNSRvDnrs8Fps9bbXZBFAqpfYZAkAyS9CGSVboeKEIStV2zlNsQ'
 const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID || '899217986619417'
 const VERIFY_TOKEN    = process.env.VERIFY_TOKEN    || 'fanatick123'
 const TRADER_NUMBER   = process.env.TRADER_NUMBER   || '447451295914'
@@ -20,6 +21,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
 const openai   = new OpenAI({ apiKey: OPENAI_API_KEY })
 const app      = express()
 app.use(express.json())
+app.use(cors())
 
 // ============================================================
 //  WHATSAPP HELPERS
