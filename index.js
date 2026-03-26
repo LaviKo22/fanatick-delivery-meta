@@ -348,3 +348,15 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }))
 app.get('/', (req, res) => res.json({ status: 'Fanatick Delivery Agent running' }))
 
 app.listen(PORT, () => console.log(`🚀 Fanatick Delivery Agent on port ${PORT}`))
+
+// Send message endpoint for dashboard chat
+app.post('/send-message', async (req, res) => {
+    const { to, message } = req.body
+    if (!to || !message) return res.status(400).json({ error: 'to and message required' })
+    try {
+        await sendMsg(to, message)
+        res.json({ success: true })
+    } catch(e) {
+        res.status(500).json({ error: e.message })
+    }
+})
