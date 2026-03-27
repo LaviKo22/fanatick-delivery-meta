@@ -35,11 +35,11 @@ async function sendMsg(to, body) {
 
 async function sendTemplate(to, firstName) {
     try {
-        await twilioClient.messages.create({
+        const message = await twilioClient.messages.create({
             from: TWILIO_NUMBER,
             to: `whatsapp:+${to.replace(/[^0-9]/g, '')}`,
             contentSid: TEMPLATE_SID,
-            contentVariables: JSON.stringify({ first_name: firstName })
+            contentVariables: JSON.stringify({ "1": firstName })
         })
     } catch(e) { console.error('Template error:', e.message) }
 }
