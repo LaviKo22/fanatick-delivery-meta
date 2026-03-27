@@ -9,7 +9,7 @@
     "@supabase/supabase-js": "^2.39.0",
     "openai": "^4.28.0",
     "cors": "^2.8.5",
-    "twilio": "^8.13.0"
+    "twilio": "^4.0.0"
   },
   "engines": { "node": ">=18.0.0" }
 }
