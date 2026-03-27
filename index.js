@@ -30,31 +30,6 @@ async function sendMsg(to, text) {
 }
 
 async function notifyTrader(text) { await sendMsg(TRADER_NUMBER, text) }
-async function sendTemplate(to, customerName, gameName) {
-    try {
-        await axios.post(
-            `https://graph.facebook.com/v22.0/${PHONE_NUMBER_ID}/messages`,
-            {
-                messaging_product: 'whatsapp',
-                to: to.replace(/[^0-9]/g, ''),
-                type: 'template',
-                template: {
-                    name: 'ticket_delivery',
-                    language: { code: 'en' },
-                    components: [{
-                        type: 'body',
-                        parameters: [
-                            { type: 'text', parameter_name: 'customer_name', text: customerName },
-                            { type: 'text', parameter_name: 'game_name', text: gameName }
-                        ]
-                    }]
-                }
-            },
-            { headers: { Authorization: `Bearer ${WA_TOKEN}`, 'Content-Type': 'application/json' } }
-        )
-        await logMsg(null, 'bot', `Template sent to ${to}`)
-    } catch(e) { console.error('Template error:', e.response?.data || e.message) }
-}
 
 async function downloadMedia(mediaId) {
     try {
@@ -132,7 +107,8 @@ function getIntent(msg) {
 }
 
 async function startDelivery(d) {
-    await sendTemplate(d.client_whatsapp, d.client_name, d.game_name)
+    const text = `👋 Hi ${d.client_name}! I'm the Fanatick delivery assistant for *${d.game_name}*.\n\nAre you on *iPhone* or *Android*? 📱`
+    await botMsg(d.client_whatsapp, text, d.id)
     await updateDelivery(d.id, { status: 'phone_detected' })
     await logMsg(d.id, 'system', 'Delivery started')
     await notifyTrader(`🚀 Delivery started\nClient: ${d.client_name}\nGame: ${d.game_name}\nOrder: #${d.order_number}`)
