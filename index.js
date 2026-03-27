@@ -35,17 +35,12 @@ async function sendMsg(to, body) {
 
 async function sendTemplate(to, firstName) {
     try {
-        await axios.post(
-            `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_SID}/Messages.json`,
-            new URLSearchParams({
-                From: TWILIO_NUMBER,
-                To: `whatsapp:+${to.replace(/[^0-9]/g, '')}`,
-                ContentSid: TEMPLATE_SID,
-                ContentVariables: JSON.stringify({ "first_name": firstName })
-            }),
-            { auth: { username: TWILIO_SID, password: TWILIO_TOKEN } }
-        )
-    } catch(e) { console.error('Template error:', e.response?.data || e.message) }
+        await twilioClient.messages.create({
+            from: TWILIO_NUMBER,
+            to: `whatsapp:+${to.replace(/[^0-9]/g, '')}`,
+            contentSid: TEMPLATE_SID
+        })
+    } catch(e) { console.error('Template error:', e.message) }
 }
 
 async function notifyTrader(text) { await sendMsg(TRADER_NUMBER, text) }
