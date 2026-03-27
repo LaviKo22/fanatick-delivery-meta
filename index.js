@@ -41,7 +41,7 @@ async function sendTemplate(to, firstName) {
                 From: TWILIO_NUMBER,
                 To: `whatsapp:+${to.replace(/[^0-9]/g, '')}`,
                 ContentSid: TEMPLATE_SID,
-                ContentVariables: JSON.stringify({ "1": firstName })
+                ContentVariables: JSON.stringify({ "first_name": firstName })
             }),
             { auth: { username: TWILIO_SID, password: TWILIO_TOKEN } }
         )
